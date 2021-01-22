@@ -175,7 +175,7 @@ class ClientControlNode(ControlNode):
                 data, target = data[0], data[1]
                 self.acquire()
                 self.zero_grad()
-
+                
                 result = self.forward(data)
                 loss = loss_fn.on(result.node)(result, target)
                 loss.backward()

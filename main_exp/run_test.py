@@ -4,6 +4,7 @@ import pickle
 import sys
 from client.ext import IrisNode
 import torch
+import model as model_local
 import net as net_local
 from torchvision import datasets, transforms
 import torch.nn.functional as F
@@ -21,7 +22,7 @@ import export
 parser = argparse.ArgumentParser()
 parser.add_argument("--log", action="store_true", default=False, help="enable iris logging")
 parser.add_argument("--color", action="store_true", default=False, help="enable iris logging color")
-parser.add_argument("--dataset", default="mnist", choices=["mnist","kmnist","fmnist"], help="dataset")
+parser.add_argument("--dataset", default="mnist", choices=["mnist","kmnist","fmnist","cifar10","cifar100"], help="dataset")
 parser.add_argument("--delay_rate", type=float, default=0., help="dalayed rate")
 parser.add_argument("--delay_config", type=int, nargs="*")
 parser.add_argument("--method", type=str, default="ours", choices=["ns","ours","ps"])
@@ -79,7 +80,7 @@ def compute_correct(result, target):
     pred = result.argmax(dim=1, keepdim=True)
     return pred.eq(target.view_as(pred)).sum().item()
 
-base_model = net_local.Net1()
+client_model, edge_model, cloud_model = model_local.make_model(args)
 
 models: List[control_node.ClientControlNode] = []
 train_loaders = []
@@ -87,21 +88,19 @@ test_self_loaders = []
 test_other_loaders = []
 
 with on(cloud_node):
-    model_cloud = net.Net4()
+    model_cloud = cloud_node.send(cloud_model)
     optimizer_cloud = torch.optim.SGD(model_cloud.parameters(), lr=args.lr)
     cloud_control_node = control_node.CloudControlNode(net.ClientNode(model_cloud, 10),None, optimizer_cloud, 10, "cloud", None)
 
 with on(edge_node):
-    model_edge = net.Net3()
-    server_model = net.Net1()
-    server_model.load_state_dict(base_model.state_dict())
+    model_edge = edge_node.send(edge_model)
+    server_model = edge_node.send(client_model)
     optimizer_edge = torch.optim.SGD(model_edge.parameters(), lr=args.lr)
     edge_control_node = control_node.CloudControlNode(net.ClientNode(model_edge, 5),net.ClientNode(server_model, 6), optimizer_edge, 5, "edge", cloud_control_node)
 
 for i, node in enumerate(clients):
     with on(node):
-        model = net.Net1()
-        model.load_state_dict(base_model.state_dict())
+        model = node.send(client_model)
         dataset = data.make_dataset(args, n=i, all=len(clients), train=True, other=False)
         train_loader = torch.utils.data.DataLoader(dataset, batch_size=64)
         test_self_dataset = data.make_dataset(args, n=i, all=len(clients), train=False, other=False)
@@ -116,13 +115,13 @@ for i, node in enumerate(clients):
         test_self_loaders.append(test_self_loader)
         test_other_loaders.append(test_other_loader)
 
-nll_loss = client.RemoteTensorFunction(F.nll_loss)
+loss_fn = client.RemoteTensorFunction(F.cross_entropy)
 
 # models[0].run(train_loaders[0], nll_loss)
 with ThreadPoolExecutor(30) as executor:
     if not args.no_edge:
         edge_future = executor.submit(edge_control_node.run, args)
-    futures = [executor.submit(models[i].run, train_loaders[i], nll_loss) for i in range(len(clients))]
+    futures = [executor.submit(models[i].run, train_loaders[i], loss_fn) for i in range(len(clients))]
     cloud_future = executor.submit(cloud_control_node.run, args)
     client_results = [f.result() for f in futures]
     if not args.no_edge:

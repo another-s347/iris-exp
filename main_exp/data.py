@@ -22,6 +22,12 @@ balance_config = {
     "fmnist":{
         2:29000,
         3:17000
+    },
+    "cifar10":{
+        3: None,
+    },
+    "cifar100":{
+        3: None
     }
 }
 
@@ -31,16 +37,29 @@ def make_dataset(args, n, all, train, other=False):
                                     transforms.ToTensor(),
                                     transforms.Normalize((0.1307,), (0.3081,))
                                 ]))
+        targets = d.targets
     elif args.dataset == "kmnist":
         d = datasets.KMNIST("../data", train=train, download=True, transform=transforms.Compose([
                                     transforms.ToTensor(),
                                     transforms.Normalize((0.1307,), (0.3081,))
                                 ]))
+        targets = d.targets
     elif args.dataset == "fmnist":
         d = datasets.FashionMNIST("../data", train=train, download=True, transform=transforms.Compose([
                                     transforms.ToTensor(),
                                     transforms.Normalize((0.1307,), (0.3081,))
                                 ]))
+        targets = d.targets
+    elif args.dataset == "cifar10":
+        d = datasets.CIFAR10("../data", train=train, download=True, transform=transforms.Compose([
+                                    transforms.ToTensor(),
+                                ]))
+        targets = torch.tensor(d.targets)
+    elif args.dataset == "cifar100":
+        d = datasets.CIFAR100("../data", train=train, download=True, transform=transforms.Compose([
+                                    transforms.ToTensor(),
+                                ]))
+        targets = torch.tensor(d.targets)
     else:
         raise NotImplementedError()
 
@@ -57,8 +76,8 @@ def make_dataset(args, n, all, train, other=False):
         h = 10
 
     if other:
-        indices = torch.where(~((d.targets >= l)*(d.targets < h)))[0]
+        indices = torch.where(~((targets >= l)*(targets < h)))[0]
     else:
-        indices = torch.where((d.targets >= l)*(d.targets < h))[0][:tail]
+        indices = torch.where((targets >= l)*(targets < h))[0][:tail]
 
     return torch.utils.data.Subset(d, indices)
