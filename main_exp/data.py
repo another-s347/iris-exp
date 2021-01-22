@@ -18,6 +18,10 @@ balance_config = {
     "kmnist":{
         2:None,
         3:None
+    },
+    "fmnist":{
+        2:29000,
+        3:17000
     }
 }
 
@@ -29,6 +33,11 @@ def make_dataset(args, n, all, train, other=False):
                                 ]))
     elif args.dataset == "kmnist":
         d = datasets.KMNIST("../data", train=train, download=True, transform=transforms.Compose([
+                                    transforms.ToTensor(),
+                                    transforms.Normalize((0.1307,), (0.3081,))
+                                ]))
+    elif args.dataset == "fmnist":
+        d = datasets.FashionMNIST("../data", train=train, download=True, transform=transforms.Compose([
                                     transforms.ToTensor(),
                                     transforms.Normalize((0.1307,), (0.3081,))
                                 ]))

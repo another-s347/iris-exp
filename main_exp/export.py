@@ -23,10 +23,12 @@ class RunResult:
         with open(f"results/{self.suffix}/loss.json", "w") as f:
             j = {
                 "time": self.datetime,
-                "results": {}
+                "results": {},
+                "sync_flags": {}
             }
             for i in self.client_results:
                 j["results"][i] = self.client_results[i].losses
+                j["sync_flags"][i] = self.client_results[i].sync_flags
             json.dump(j, f)
             path = os.path.realpath(f.name)
 
@@ -55,6 +57,7 @@ class RunResult:
 class ClientResult:
     def __init__(self) -> None:
         self.losses: List[float] = []
+        self.sync_flags: List[int] = []
         self.rank: int = -1
         self.len_dataset: int = -1
 

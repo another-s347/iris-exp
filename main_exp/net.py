@@ -55,7 +55,13 @@ class ClientNode:
         self.local_version = 0
         self.global_version = 0
         self.rank = rank
+        self.sync = False
         self.lock = Lock()
+
+    def set_sync(self, s):
+        old = self.sync
+        self.sync = s
+        return old
 
     def bump_local(self, a=1):
         self.local_version += a

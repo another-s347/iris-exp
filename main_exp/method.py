@@ -5,6 +5,11 @@ def run_method(args, node, delayed_node, not_delayed_node, current_models, globa
         ours(args, node, delayed_node, not_delayed_node, current_models, global_version)
     elif args.method == "ps":
         parameter_server(args, node, delayed_node, not_delayed_node, current_models, global_version, server_model)
+    elif args.method == "ns":
+        for c in current_models:
+            c.bump_global(global_version+1)
+        # simply do nothing
+        pass
 
 def ours(args, node, delayed_node, not_delayed_node, current_models, global_version):
     if len(delayed_node) == 0:
@@ -14,6 +19,7 @@ def ours(args, node, delayed_node, not_delayed_node, current_models, global_vers
         avged_grad = avg_grad.on(node)(*grads)
         for c in current_models:
             c.apply_model(avged_grad)
+            c.set_sync(True)
             c.bump_global(global_version+1)
     else:
         if (not args.ignore_delay):
@@ -25,6 +31,7 @@ def ours(args, node, delayed_node, not_delayed_node, current_models, global_vers
                 grads.append(m.diff_model())
             avged_grad = avg_grad.on(node)(*grads)
             for c in not_delayed_node:
+                c.set_sync(True)
                 c.apply_model(avged_grad)
 
             cur = not_delayed_node[0].model
@@ -36,8 +43,10 @@ def ours(args, node, delayed_node, not_delayed_node, current_models, global_vers
             avged_delayed_grads = avg_grad.on(node)(*delayed_grads)
             for c in not_delayed_node:
                 c.apply_model(avged_delayed_grads)
+                c.set_sync(True)
             for c in delayed_node:
                 apply_temp_model.on(c.node)(c, avged_delayed_grads)
+                c.set_sync(True)
 
         for c in delayed_node:
             c.bump_global(global_version+1)

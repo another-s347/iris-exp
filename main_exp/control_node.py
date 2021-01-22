@@ -76,7 +76,7 @@ class CloudControlNode(ControlNode):
         counts = [0 for i in range(len(self.sub_nodes))]
         ignored_counts = [0 for i in range(len(self.sub_nodes))]
         ignore_padding = int(len(self.sub_nodes) / args.delay_rate)-len(self.sub_nodes) if args.delay_rate != 0. else 0 
-        n_sync = [5 for i in range(len(self.sub_nodes))]
+        n_sync = [5 for i in range(len(self.sub_nodes))] if len(args.delay_config) == 0 else args.delay_config
         finish_flag = 0
         global_version = 0
         ignored_count = 0
@@ -131,6 +131,14 @@ class CloudControlNode(ControlNode):
 
                 # accumulate global version
                 global_version += 1
+        
+        for m in self.sub_nodes:
+            m.acquire()
+        
+        method.run_method(args, self.iris_node.node, [], self.sub_nodes, self.sub_nodes, global_version, server_model)
+
+        for m in self.sub_nodes:
+            m.release()
 
         if self.next_node is not None:
             self.next_node.notify_finish(-1)
@@ -178,6 +186,8 @@ class ClientControlNode(ControlNode):
                 self.release()
 
                 loss_value = loss.get().item()
+                if self.iris_node.set_sync(False).get():
+                    run_result.sync_flags.append(len(run_result.losses))
                 run_result.losses.append(loss_value)
                 
                 if batch_idx % 5 == 0:
