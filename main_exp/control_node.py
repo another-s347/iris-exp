@@ -60,9 +60,10 @@ class ControlNode:
         self.sub_nodes.append(sub_node.iris_node)
 
 class CloudControlNode(ControlNode):
-    def __init__(self, iris_node: IrisObject, optim:Any, rank: int, name: str, next_node: Optional['ControlNode']) -> None:
+    def __init__(self, iris_node: IrisObject,server_model:'IrisObject', optim:Any, rank: int, name: str, next_node: Optional['ControlNode']) -> None:
         super().__init__(iris_node, optim=optim, rank=rank, name=name, next_node=next_node)
         self.notify_queue = Queue()
+        self.server_model = server_model
 
     def notify(self, *args, **kwds):
         rank = args[0]
@@ -76,13 +77,13 @@ class CloudControlNode(ControlNode):
         counts = [0 for i in range(len(self.sub_nodes))]
         ignored_counts = [0 for i in range(len(self.sub_nodes))]
         ignore_padding = int(len(self.sub_nodes) / args.delay_rate)-len(self.sub_nodes) if args.delay_rate != 0. else 0 
-        n_sync = [5 for i in range(len(self.sub_nodes))] if len(args.delay_config) == 0 else args.delay_config
+        n_sync = [5 for i in range(len(self.sub_nodes))] if args.delay_config is None else args.delay_config
+        print(f"delay config: {n_sync}")
         finish_flag = 0
         global_version = 0
         ignored_count = 0
         print(f"run {self.name}")
         run_result = EdgeResult()
-        server_model = self.sub_nodes[0].model.to_node(self.iris_node.node)
         while True:
             r = self.notify_queue.get()
             if r == -1:
@@ -124,7 +125,7 @@ class CloudControlNode(ControlNode):
                 for m in self.sub_nodes:
                     m.acquire()
                 
-                method.run_method(args, self.iris_node.node, delayed_node, not_delayed_node, current_models, global_version, server_model)
+                method.run_method(args, self.iris_node.node, delayed_node, not_delayed_node, current_models, global_version, self.server_model)
 
                 for m in self.sub_nodes:
                     m.release()
@@ -135,7 +136,7 @@ class CloudControlNode(ControlNode):
         for m in self.sub_nodes:
             m.acquire()
         
-        method.run_method(args, self.iris_node.node, [], self.sub_nodes, self.sub_nodes, global_version, server_model)
+        method.run_method(args, self.iris_node.node, [], self.sub_nodes, self.sub_nodes, global_version, self.server_model)
 
         for m in self.sub_nodes:
             m.release()

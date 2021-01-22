@@ -34,6 +34,8 @@ parser.add_argument("--no_edge", action="store_true", default=False)
 parser.add_argument("--no_test", action="store_true", default=False)
 args = parser.parse_args()
 
+print(vars(args))
+
 config = client.IrisConfig()
 # config.go_async = True
 # config.go_async_sequence = True
@@ -77,6 +79,8 @@ def compute_correct(result, target):
     pred = result.argmax(dim=1, keepdim=True)
     return pred.eq(target.view_as(pred)).sum().item()
 
+base_model = net_local.Net1()
+
 models: List[control_node.ClientControlNode] = []
 train_loaders = []
 test_self_loaders = []
@@ -85,14 +89,15 @@ test_other_loaders = []
 with on(cloud_node):
     model_cloud = net.Net4()
     optimizer_cloud = torch.optim.SGD(model_cloud.parameters(), lr=args.lr)
-    cloud_control_node = control_node.CloudControlNode(net.ClientNode(model_cloud, 10), optimizer_cloud, 10, "cloud", None)
+    cloud_control_node = control_node.CloudControlNode(net.ClientNode(model_cloud, 10),None, optimizer_cloud, 10, "cloud", None)
 
 with on(edge_node):
     model_edge = net.Net3()
+    server_model = net.Net1()
+    server_model.load_state_dict(base_model.state_dict())
     optimizer_edge = torch.optim.SGD(model_edge.parameters(), lr=args.lr)
-    edge_control_node = control_node.CloudControlNode(net.ClientNode(model_edge, 5), optimizer_edge, 5, "edge", cloud_control_node)
+    edge_control_node = control_node.CloudControlNode(net.ClientNode(model_edge, 5),net.ClientNode(server_model, 6), optimizer_edge, 5, "edge", cloud_control_node)
 
-base_model = net_local.Net1()
 for i, node in enumerate(clients):
     with on(node):
         model = net.Net1()

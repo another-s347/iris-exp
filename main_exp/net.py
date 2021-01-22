@@ -89,7 +89,10 @@ class ClientNode:
 
     def release(self):
         self.lock.release()
-    
+
+    def load_model(self, model):
+        self.base_model.load_state_dict(model.state_dict())
+        self.model.load_state_dict(model.state_dict())
 
 class Net1(nn.Module):
     def __init__(self):
