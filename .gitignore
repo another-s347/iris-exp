@@ -1,0 +1,10 @@
+.venv
+data/
+*.pdf
+*.json
+dummy/
+*.log
+__pycache__/
+no_sync/
+*.png
+parameter_server/
