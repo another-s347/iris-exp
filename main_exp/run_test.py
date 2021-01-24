@@ -27,12 +27,15 @@ parser.add_argument("--delay_rate", type=float, default=0., help="dalayed rate")
 parser.add_argument("--delay_config", type=int, nargs="*")
 parser.add_argument("--method", type=str, default="ours", choices=["ns","ours","ps"])
 parser.add_argument("--run_async", action="store_true", default=False)
-parser.add_argument("--lr", type=float, default=0.1)
+parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--balance", type=bool, default=True)
 parser.add_argument("--suffix", type=str, default="default")
 parser.add_argument("--export", action="store_true", default=False)
 parser.add_argument("--no_edge", action="store_true", default=False)
 parser.add_argument("--no_test", action="store_true", default=False)
+parser.add_argument("--device", default="cuda", choices=["cuda","cpu"])
+parser.add_argument("--epoch", type=int, default=1)
+parser.add_argument("--nodes", type=int, default=3)
 args = parser.parse_args()
 
 print(vars(args))
@@ -57,19 +60,16 @@ torch = proxy(torch, c)
 data = proxy(data, c)
 
 # client nodes
-node0 = c.create_node("node0",ip="10.0.0.1",port=12345)
-node1 = c.create_node("node1",ip="10.0.0.2",port=12345)
-node2 = c.create_node("node2",ip="10.0.0.3",port=12345)
-node0.connect(node2, bi=True)
-node1.connect(node2, bi=True)
-node0.connect(node1, bi=True)
-clients: List[IrisNode] = [node0, node1, node2]
+clients = [c.create_node(f"node{x}",ip=f"10.0.0.{x+1}",port=12345) for x in range(args.nodes)]
+for i in range(1, len(clients)):
+    clients[i-1].connect(clients[i], bi=True)
+clients[0].connect(clients[-1],bi=True)
 # edge nodes
-edge_node = c.create_node("edge",ip="10.0.0.4",port=12345)
+edge_node = c.create_node("edge",ip="10.0.0.14",port=12345)
 for n in clients:
     n.connect(edge_node, bi=True)
 # cloud nodes
-cloud_node = c.create_node("cloud", ip="10.0.0.5",port=12345)
+cloud_node = c.create_node("cloud", ip="10.0.0.15",port=12345)
 edge_node.connect(cloud_node, bi=True)
 for n in clients:
     n.connect(cloud_node, bi=True)
@@ -121,7 +121,7 @@ loss_fn = client.RemoteTensorFunction(F.cross_entropy)
 with ThreadPoolExecutor(30) as executor:
     if not args.no_edge:
         edge_future = executor.submit(edge_control_node.run, args)
-    futures = [executor.submit(models[i].run, train_loaders[i], loss_fn) for i in range(len(clients))]
+    futures = [executor.submit(models[i].run, args, train_loaders[i], loss_fn) for i in range(len(clients))]
     cloud_future = executor.submit(cloud_control_node.run, args)
     client_results = [f.result() for f in futures]
     if not args.no_edge:
@@ -137,7 +137,7 @@ if not args.no_test:
         test_loss = 0.
         len_testdataset = len(test_self_loaders[i].dataset)
         for batch_idx, data in enumerate(test_self_loaders[i]):
-            data, target = data[0], data[1]
+            data, target = data[0].to(args.device), data[1].to(args.device)
             result = models[i].forward(data)
             correct += compute_correct.on(result.node)(result, target).get()
             test_loss /= len_testdataset
@@ -154,7 +154,7 @@ if not args.no_test:
         test_loss = 0.
         len_testdataset = len(test_other_loaders[i].dataset)
         for batch_idx, data in enumerate(test_other_loaders[i]):
-            data, target = data[0], data[1]
+            data, target = data[0].to(args.device), data[1].to(args.device)
             result = models[i].forward(data)
             correct += compute_correct.on(result.node)(result, target).get()
             test_loss /= len_testdataset

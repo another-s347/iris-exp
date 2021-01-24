@@ -13,21 +13,27 @@ import torch.nn.functional as F
 balance_config = {
     "mnist":{
         2:29000,
-        3:17000
+        3:17000,
+        5: 11200,
+        10: 5400
     },
     "kmnist":{
         2:None,
-        3:None
+        3:None,
+        5: None
     },
     "fmnist":{
         2:29000,
-        3:17000
+        3:17000,
+        5: None
     },
     "cifar10":{
         3: None,
+        5: None
     },
     "cifar100":{
-        3: None
+        3: None,
+        5: None
     }
 }
 
@@ -64,7 +70,10 @@ def make_dataset(args, n, all, train, other=False):
         raise NotImplementedError()
 
     if args.balance:
-        tail = balance_config[args.dataset][all]
+        try:
+            tail = balance_config[args.dataset][all]
+        except:
+            tail = None
     else:
         tail = None
     
@@ -72,11 +81,8 @@ def make_dataset(args, n, all, train, other=False):
     l = n * step
     h = (n+1) * step
 
-    if n+1 == all and h != 10:
-        h = 10
-
     if other:
-        indices = torch.where(~((targets >= l)*(targets < h)))[0]
+        indices = torch.where((~((targets >= l)*(targets < h))*(targets < (all*step))))[0]
     else:
         indices = torch.where((targets >= l)*(targets < h))[0][:tail]
 

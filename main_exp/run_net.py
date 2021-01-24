@@ -9,7 +9,13 @@ from mininet.net import Mininet
 # from mn_wifi.wmediumdConnector import interference
 from mininet.node import RemoteController
 from mininet.link import TCIntf, TCLink
-import net
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--log", action="store_true", default=False, help="enable iris logging")
+parser.add_argument("--nodes", type=int, default=3)
+parser.add_argument("--mode", type=str, default="release", choices=["release","debug"])
+args = parser.parse_args()
 
 def topology():
     "Create a network."
@@ -18,16 +24,14 @@ def topology():
     bw = 100
 
     info("*** Creating nodes\n")
-    cn1 = net.addHost("cn1",ip="10.0.0.1/24")
-    cn2 = net.addHost("cn2",ip="10.0.0.2/24")
-    cn3 = net.addHost("cn3",ip="10.0.0.3/24")
+    cns = [net.addHost(f"cn{x+1}",ip=f"10.0.0.{x+1}/24") for x in range(args.nodes)]
 
-    ed1 = net.addHost("ed1",ip="10.0.0.4/24")
+    ed1 = net.addHost("ed1",ip="10.0.0.14/24")
 
     # cloud1 = net.addHost("cloud",ip="10.0.1.2/24")
-    cloud1 = net.addHost("cloud",ip="10.0.0.5/24")
+    cloud1 = net.addHost("cloud",ip="10.0.0.15/24")
 
-    nodes = [cn1, cn2, cn3, ed1, cloud1]
+    nodes = [*cns, ed1, cloud1]
 
     info("*** Creating switch")
     fw1 = net.addSwitch("fw1",protocols=["OpenFlow14"],failMode="standalone")
@@ -35,9 +39,8 @@ def topology():
     # fw3 = net.addSwitch("fw3",protocols=["OpenFlow14"],failMode="standalone")
 
     info("*** Creating links\n")
-    net.addLink(fw1, cn1)
-    net.addLink(fw1, cn2)
-    net.addLink(fw1, cn3)
+    for cn in cns:
+        net.addLink(fw1, cn)
     
     net.addLink(fw1, ed1)
     # net.addLink(fw2, ed1,params2={ 'ip' : '10.0.1.1/24' })
@@ -58,7 +61,7 @@ def topology():
     ps = []
     for n in nodes:
         log = open(f'{n.IP()}.log', 'w')
-        p1 = n.popen(["/home/skye/iris/iris-client/target/release/server","-l",n.IP(),"-p","12345"],stdout=log,stderr=log)
+        p1 = n.popen([f"/home/skye/iris/iris-client/target/{args.mode}/server","-l",n.IP(),"-p","12345"],stdout=log,stderr=log)
         ps.append(p1)
         intfs = list(n.nameToIntf.keys())
         p2 = n.popen(["python","/home/skye/iris-exp/main_exp/track_network.py","--interface",*intfs,"--name",n.IP()])
@@ -69,10 +72,12 @@ def topology():
 
     for p in ps:
         p.terminate()
+
     info("*** Stopping network\n")
     net.stop()
 
 
 if __name__ == '__main__':
-    setLogLevel('debug')
-    topology()
+    if args.nodes <= 10:
+        setLogLevel('debug')
+        topology()

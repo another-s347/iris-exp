@@ -10,7 +10,7 @@ def make_model(args):
         return make_resnet(args)
 
 def make_resnet(args):
-    resnet = models.resnet50(pretrained=True)
+    resnet = models.resnet18(pretrained=True)
     net1 = nn.Sequential(
         resnet.conv1,
         resnet.bn1,
@@ -25,10 +25,10 @@ def make_resnet(args):
         resnet.layer3,
         resnet.layer4,
         resnet.avgpool,
-        resnet.fc,
-        nn.Flatten()
+        nn.Flatten(),
+        resnet.fc
     )
-    return net1, net2, net3
+    return net1.to(args.device), net2.to(args.device), net3.to(args.device)
 
 def make_2_conv(args):
-    return net.Net1(), net.Net3(), net.Net4()
+    return net.Net1().to(args.device), net.Net3().to(args.device), net.Net4().to(args.device)

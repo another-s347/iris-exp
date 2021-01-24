@@ -34,19 +34,23 @@ class RunResult:
 
         print(f"write loss data to {path}")
         
-        with open(f"results/{self.suffix}/result.json","r") as f:
-            body = f.read()
-            if len(body) == 0:
-                old = {'run':[]}
-            else:
-                old = json.loads(body)
-            old['run'].append({
-                "args": self.args,
-                "suffix": self.suffix,
-                "datetime": self.datetime,
-                "eval_results": self.eval_results,
-                "edge_results": self.edge_results
-            })
+        try:
+            with open(f"results/{self.suffix}/result.json","r") as f:
+                body = f.read()
+                if len(body) == 0:
+                    old = {'run':[]}
+                else:
+                    old = json.loads(body)
+                old['run'].append({
+                    "args": self.args,
+                    "suffix": self.suffix,
+                    "datetime": self.datetime,
+                    "eval_results": self.eval_results,
+                    "edge_results": self.edge_results
+                })
+        except:
+            old = {'run':[]}
+    
         with open(f"results/{self.suffix}/result.json","w") as f:
             json.dump(old, f, cls=MyEncoder)
 

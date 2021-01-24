@@ -165,14 +165,14 @@ class ClientControlNode(ControlNode):
     def __init__(self, iris_node: 'IrisObject', optim:Any, rank: int, next_node: Optional['ControlNode']) -> None:
         super().__init__(iris_node, optim, rank, name=f"client:{rank}", next_node=next_node)
     
-    def run(self, loader, loss_fn) -> 'ClientResult':
+    def run(self, args, loader, loss_fn) -> 'ClientResult':
         self.iris_node.ctx.control_context.set(client.ControlContext(cid=self.rank))
         run_result: ClientResult = ClientResult()
         run_result.len_dataset = len(loader.dataset)
         run_result.rank = self.rank
-        for epoch in range(1):
+        for epoch in range(args.epoch):
             for batch_idx, data in enumerate(loader,1):
-                data, target = data[0], data[1]
+                data, target = data[0].to(args.device), data[1].to(args.device)
                 self.acquire()
                 self.zero_grad()
                 
