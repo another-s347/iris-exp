@@ -32,7 +32,7 @@ def avg_grad(*grads):
 
 @remote()
 def compute_dc_grad(model, current_model):
-    model.temp_model = current_model
+    model.temp_model = copy.deepcopy(current_model)
     cur_state = current_model.state_dict() # w_{t+r}
     grad = model.diff_model() # g(w_t)
     old_state = model.base_model.state_dict() # w_t
@@ -42,7 +42,9 @@ def compute_dc_grad(model, current_model):
 
 @remote()
 def apply_temp_model(model, state):
-    model.model = model.temp_model
+    model.base_model.load_state_dict(model.temp_model.state_dict())
+    model.model.load_state_dict(model.temp_model.state_dict())
+    # model.model = model.temp_model
     del model.temp_model
     model.apply_model(state)
 
@@ -160,18 +162,3 @@ class Net4(nn.Module):
         x = self.fc2(x)
         output = F.log_softmax(x, dim=1)
         return output
-
-
-class TestData:
-    def __init__(self, x, did):
-        self.x = x
-        self.id = did
-class TestClass:
-    def __init__(self, add):
-        self.add = add
-
-    def __call__(self, x):
-        print(f"get data #{x.id} = {x.x}")
-        x.x += self.add
-        # time.sleep(1)
-        return x

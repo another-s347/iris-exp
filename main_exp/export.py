@@ -52,7 +52,7 @@ class RunResult:
             old = {'run':[]}
     
         with open(f"results/{self.suffix}/result.json","w") as f:
-            json.dump(old, f, cls=MyEncoder)
+            json.dump(old, f, cls=MyEncoder, indent=4)
 
             path = os.path.realpath(f.name)
 

@@ -33,9 +33,11 @@ parser.add_argument("--suffix", type=str, default="default")
 parser.add_argument("--export", action="store_true", default=False)
 parser.add_argument("--no_edge", action="store_true", default=False)
 parser.add_argument("--no_test", action="store_true", default=False)
-parser.add_argument("--device", default="cuda", choices=["cuda","cpu"])
+parser.add_argument("--device", default="cpu", choices=["cuda","cpu"])
 parser.add_argument("--epoch", type=int, default=1)
 parser.add_argument("--nodes", type=int, default=3)
+parser.add_argument("--ignore_delay", action="store_true", default=False)
+parser.add_argument("--local", action="store_true", default=False)
 args = parser.parse_args()
 
 print(vars(args))
@@ -59,21 +61,37 @@ net = proxy(net_local, c)
 torch = proxy(torch, c)
 data = proxy(data, c)
 
-# client nodes
-clients = [c.create_node(f"node{x}",ip=f"10.0.0.{x+1}",port=12345) for x in range(args.nodes)]
-for i in range(1, len(clients)):
-    clients[i-1].connect(clients[i], bi=True)
-clients[0].connect(clients[-1],bi=True)
-# edge nodes
-edge_node = c.create_node("edge",ip="10.0.0.14",port=12345)
-for n in clients:
-    n.connect(edge_node, bi=True)
-# cloud nodes
-cloud_node = c.create_node("cloud", ip="10.0.0.15",port=12345)
-edge_node.connect(cloud_node, bi=True)
-for n in clients:
-    n.connect(cloud_node, bi=True)
-# todo: connect
+if args.local:
+    clients = [c.create_node(f"node{x}",ip=f"local",port=12345) for x in range(args.nodes)]
+    for i in range(1, len(clients)):
+        clients[i-1].connect(clients[i], bi=True)
+    clients[0].connect(clients[-1],bi=True)
+    # edge nodes
+    edge_node = c.create_node("edge",ip="local",port=12345)
+    for n in clients:
+        n.connect(edge_node, bi=True)
+    # cloud nodes
+    cloud_node = c.create_node("cloud", ip="local",port=12345)
+    edge_node.connect(cloud_node, bi=True)
+    for n in clients:
+        n.connect(cloud_node, bi=True)
+    # todo: connect
+else:
+    # client nodes
+    clients = [c.create_node(f"node{x}",ip=f"10.0.0.{x+1}",port=12345) for x in range(args.nodes)]
+    for i in range(1, len(clients)):
+        clients[i-1].connect(clients[i], bi=True)
+    clients[0].connect(clients[-1],bi=True)
+    # edge nodes
+    edge_node = c.create_node("edge",ip="10.0.0.14",port=12345)
+    for n in clients:
+        n.connect(edge_node, bi=True)
+    # cloud nodes
+    cloud_node = c.create_node("cloud", ip="10.0.0.15",port=12345)
+    edge_node.connect(cloud_node, bi=True)
+    for n in clients:
+        n.connect(cloud_node, bi=True)
+    # todo: connect
 
 @remote()
 def compute_correct(result, target):
@@ -102,7 +120,7 @@ for i, node in enumerate(clients):
     with on(node):
         model = node.send(client_model)
         dataset = data.make_dataset(args, n=i, all=len(clients), train=True, other=False)
-        train_loader = torch.utils.data.DataLoader(dataset, batch_size=64)
+        train_loader = torch.utils.data.DataLoader(dataset, shuffle=True, batch_size=64)
         test_self_dataset = data.make_dataset(args, n=i, all=len(clients), train=False, other=False)
         test_other_dataset = data.make_dataset(args, n=i, all=len(clients), train=False, other=True)
         test_self_loader = torch.utils.data.DataLoader(test_self_dataset, batch_size=64)

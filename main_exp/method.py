@@ -13,7 +13,7 @@ def run_method(args, node, delayed_node, not_delayed_node, current_models, globa
         pass
 
 def ours(args, node, delayed_node, not_delayed_node, current_models, global_version):
-    if len(delayed_node) == 0:
+    if len(delayed_node) == 0 or args.ignore_delay:
         grads = []
         for m in current_models:
             grads.append(m.diff_model())
@@ -23,31 +23,27 @@ def ours(args, node, delayed_node, not_delayed_node, current_models, global_vers
             c.set_sync(True)
             c.bump_global(global_version+1)
     else:
-        if (not args.ignore_delay):
-            if len(not_delayed_node) == 0:
-                not_delayed_node
-            # compute w(t+r)
-            grads = []
-            for m in not_delayed_node:
-                grads.append(m.diff_model())
-            avged_grad = avg_grad.on(node)(*grads)
-            for c in not_delayed_node:
-                c.set_sync(True)
-                c.apply_model(avged_grad)
+        # compute w(t+r)
+        grads = []
+        for m in not_delayed_node:
+            grads.append(m.diff_model())
+        avged_grad = avg_grad.on(node)(*grads)
+        for c in not_delayed_node:
+            c.apply_model(avged_grad)
 
-            cur = not_delayed_node[0].model
-            # cur = not_delayed_node[0].model.to_node(edge_model.node)
+        cur = not_delayed_node[0].model.to_node(node)
 
-            delayed_grads = []
-            for m in delayed_node:
-                delayed_grads.append(compute_dc_grad.on(m.node)(m, cur))
-            avged_delayed_grads = avg_grad.on(node)(*delayed_grads)
-            for c in not_delayed_node:
-                c.apply_model(avged_delayed_grads)
-                c.set_sync(True)
-            for c in delayed_node:
-                apply_temp_model.on(c.node)(c, avged_delayed_grads)
-                c.set_sync(True)
+        delayed_grads = []
+        for m in delayed_node:
+            delayed_grads.append(compute_dc_grad.on(m.node)(m, cur))
+        avged_delayed_grads = avg_grad.on(node)(*delayed_grads)
+        for c in not_delayed_node:
+            c.apply_model(avged_delayed_grads)
+            c.set_sync(True)
+
+        for c in delayed_node:
+            apply_temp_model.on(c.node)(c, avged_delayed_grads)
+            c.set_sync(True)
 
         for c in delayed_node:
             c.bump_global(global_version+1)
@@ -55,7 +51,7 @@ def ours(args, node, delayed_node, not_delayed_node, current_models, global_vers
             c.bump_global(global_version+1)
 
 def parameter_server(args, node, delayed_node, not_delayed_node, current_models, global_version, server_model):
-    if len(delayed_node) == 0:
+    if len(delayed_node) == 0 or args.ignore_delay:
         grads = []
         for m in current_models:
             grads.append(m.diff_model())
@@ -67,26 +63,25 @@ def parameter_server(args, node, delayed_node, not_delayed_node, current_models,
             c.load_model(server_model.model)
             c.bump_global(global_version+1)
     else:
-        if (not args.ignore_delay):
-            # compute w(t+r)
-            grads = []
-            for m in not_delayed_node:
-                grads.append(m.diff_model())
-            avged_grad = avg_grad.on(node)(*grads)
-            server_model.apply_model(avged_grad)
+        # compute w(t+r)
+        grads = []
+        for m in not_delayed_node:
+            grads.append(m.diff_model())
+        avged_grad = avg_grad.on(node)(*grads)
+        server_model.apply_model(avged_grad)
 
-            cur = not_delayed_node[0].model.to_node(node)
+        cur = not_delayed_node[0].model.to_node(node)
 
-            delayed_grads = []
-            for m in delayed_node:
-                delayed_grads.append(compute_dc_grad.on(m.node)(m, cur))
-            avged_delayed_grads = avg_grad.on(node)(*delayed_grads)
-            server_model.apply_model(avged_delayed_grads)
+        delayed_grads = []
+        for m in delayed_node:
+            delayed_grads.append(compute_dc_grad.on(m.node)(m, cur))
+        avged_delayed_grads = avg_grad.on(node)(*delayed_grads)
+        server_model.apply_model(avged_delayed_grads)
 
-            for c in not_delayed_node:
-                c.load_model(server_model.model)
-            for c in delayed_node:
-                c.load_model(server_model.model)
+        for c in not_delayed_node:
+            c.load_model(server_model.model)
+        for c in delayed_node:
+            c.load_model(server_model.model)
 
         for c in delayed_node:
             c.bump_global(global_version+1)

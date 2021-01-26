@@ -11,7 +11,7 @@ class MyEncoder(JSONEncoder):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--interface', type=str, nargs='+', required=True)
-parser.add_argument('--interval', type=float, default=1.)
+parser.add_argument('--interval', type=float, default=0.2)
 parser.add_argument('--name', type=str, default="default")
 args = parser.parse_args()
 
@@ -28,14 +28,19 @@ class Stats:
     def __init__(self, interval) -> None:
         self.send = []
         self.send_speed = []
+        self.avg_send_speed = [0.]
         self.receive = []
         self.receive_speed = []
+        self.avg_recv_speed = [0.]
         self.interval = interval
 
     def update(self, send, receive):
+        alpha = 0.2
         if len(self.send) != 0:
             self.send_speed.append((send-self.send[-1]) / self.interval)
             self.receive_speed.append((receive-self.receive[-1]) / self.interval)
+            self.avg_send_speed.append((1-alpha)*self.send_speed[-1]+alpha*self.avg_send_speed[-1])
+            self.avg_recv_speed.append((1-alpha)*self.receive_speed[-1]+alpha*self.avg_recv_speed[-1])
         self.send.append(send)
         self.receive.append(receive)
 
