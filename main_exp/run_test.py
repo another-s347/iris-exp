@@ -38,6 +38,7 @@ parser.add_argument("--epoch", type=int, default=1)
 parser.add_argument("--nodes", type=int, default=3)
 parser.add_argument("--ignore_delay", action="store_true", default=False)
 parser.add_argument("--local", action="store_true", default=False)
+parser.add_argument("--epoch_test", type=int, default=0)
 args = parser.parse_args()
 
 print(vars(args))
@@ -137,12 +138,12 @@ loss_fn = client.RemoteTensorFunction(F.cross_entropy)
 
 # models[0].run(train_loaders[0], nll_loss)
 with ThreadPoolExecutor(30) as executor:
-    if not args.no_edge:
+    if (not args.no_edge) and args.nodes > 1:
         edge_future = executor.submit(edge_control_node.run, args)
-    futures = [executor.submit(models[i].run, args, train_loaders[i], loss_fn) for i in range(len(clients))]
-    cloud_future = executor.submit(cloud_control_node.run, args)
+        cloud_future = executor.submit(cloud_control_node.run, args)
+    futures = [executor.submit(models[i].run, args, train_loaders[i], loss_fn, test_self_loaders[i], test_other_loaders[i]) for i in range(len(clients))]
     client_results = [f.result() for f in futures]
-    if not args.no_edge:
+    if (not args.no_edge) and args.nodes > 1:
         run_result.edge_results = edge_future.result()
     for i, r in enumerate(client_results):
         run_result.client_results[i] = r
@@ -154,37 +155,56 @@ if not args.no_test:
         correct = 0.
         test_loss = 0.
         len_testdataset = len(test_self_loaders[i].dataset)
-        for batch_idx, data in enumerate(test_self_loaders[i]):
-            data, target = data[0].to(args.device), data[1].to(args.device)
-            result = models[i].forward(data)
-            correct += compute_correct.on(result.node)(result, target).get()
-            test_loss /= len_testdataset
+        if len_testdataset > 0:
+            for batch_idx, data in enumerate(test_self_loaders[i]):
+                data, target = data[0].to(args.device), data[1].to(args.device)
+                result = models[i].forward(data)
+                correct += compute_correct.on(result.node)(result, target).get()
+                test_loss /= len_testdataset
 
-        print('\n[{}] Self test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                i,
-                test_loss, correct, len_testdataset,
-                100. * correct / len_testdataset))
+            print('\n[{}] Self test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+                    i,
+                    test_loss, correct, len_testdataset,
+                    100. * correct / len_testdataset))
 
-        eval_result.self_acc = 100. * correct / len_testdataset
-        eval_result.self_correct = correct
+            eval_result.self_acc = 100. * correct / len_testdataset
+            eval_result.self_correct = correct
 
         correct = 0.
         test_loss = 0.
         len_testdataset = len(test_other_loaders[i].dataset)
-        for batch_idx, data in enumerate(test_other_loaders[i]):
-            data, target = data[0].to(args.device), data[1].to(args.device)
-            result = models[i].forward(data)
-            correct += compute_correct.on(result.node)(result, target).get()
-            test_loss /= len_testdataset
+        if len_testdataset > 0:
+            for batch_idx, data in enumerate(test_other_loaders[i]):
+                data, target = data[0].to(args.device), data[1].to(args.device)
+                result = models[i].forward(data)
+                correct += compute_correct.on(result.node)(result, target).get()
+                test_loss /= len_testdataset
 
-        print('\n[{}] Other test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-                i,
-                test_loss, correct, len_testdataset,
-                100. * correct / len_testdataset))
+            print('\n[{}] Other test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+                    i,
+                    test_loss, correct, len_testdataset,
+                    100. * correct / len_testdataset))
 
-        eval_result.other_acc = 100. * correct / len_testdataset
-        eval_result.other_correct = correct
-        run_result.eval_results[i] = eval_result
+            eval_result.other_acc = 100. * correct / len_testdataset
+            eval_result.other_correct = correct
+            run_result.eval_results[i] = eval_result
+
+    correct = 0.
+    test_loss = 0.
+    len_testdataset = len(test_self_loaders[0].dataset) + len(test_other_loaders[0].dataset)
+    for batch_idx, data in enumerate(itertools.chain(test_self_loaders[0],test_other_loaders[0])):
+        data, target = data[0].to(args.device), data[1].to(args.device)
+        result = models[0].iris_node.base_model(data)
+        result = edge_control_node.iris_node.model(result)
+        result = cloud_control_node.iris_node.model(result)
+        correct += compute_correct.on(result.node)(result, target).get()
+        test_loss /= len_testdataset
+
+    print('\nGlobal test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+            test_loss, correct, len_testdataset,
+            100. * correct / len_testdataset))
+
+    run_result.global_accs = 100. * correct / len_testdataset
 
 c.close()
 if args.export:

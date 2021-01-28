@@ -2,12 +2,19 @@ from export import ClientResult, EdgeResult
 from typing import List, Any, Optional
 
 from client.ext import IrisObject
+from client import remote
+import export
 from net import *
 from queue import Queue
 import random
 import copy
 import client
 import method
+
+@remote()
+def compute_correct(result, target):
+    pred = result.argmax(dim=1, keepdim=True)
+    return pred.eq(target.view_as(pred)).sum().item()
 
 class ControlNode:
     def __init__(self, iris_node: 'IrisObject', optim: Any, rank: int, name: str, next_node: Optional['ControlNode'] = None) -> None:
@@ -152,31 +159,34 @@ class CloudControlNode(ControlNode):
         run_result.delayed_padding = ignore_padding
         return run_result
 
-class EdgeControlNode(CloudControlNode):
-    def __init__(self, iris_node: 'IrisObject', optim: Any, rank: int, name: str, next_node: Optional['ControlNode']) -> None:
-        super().__init__(iris_node, optim, rank, name, next_node=next_node)
+# class EdgeControlNode(CloudControlNode):
+#     def __init__(self, iris_node: 'IrisObject', optim: Any, rank: int, name: str, next_node: Optional['ControlNode']) -> None:
+#         super().__init__(iris_node, optim, rank, name, next_node=next_node)
 
-    def step(self):
-        super().step()    
-        if self.next_node is not None:
-            self.next_node.notify(self.rank)
+#     def step(self):
+#         super().step()    
+#         if self.next_node is not None:
+#             self.next_node.notify(self.rank)
     
 class ClientControlNode(ControlNode):
     def __init__(self, iris_node: 'IrisObject', optim:Any, rank: int, next_node: Optional['ControlNode']) -> None:
         super().__init__(iris_node, optim, rank, name=f"client:{rank}", next_node=next_node)
     
-    def run(self, args, loader, loss_fn) -> 'ClientResult':
+    def run(self, args, loader, loss_fn, test_self_loader, test_other_loader) -> 'ClientResult':
         self.iris_node.ctx.control_context.set(client.ControlContext(cid=self.rank))
         run_result: ClientResult = ClientResult()
         run_result.len_dataset = len(loader.dataset)
         run_result.rank = self.rank
+        len_traindataset = len(loader.dataset)
         for epoch in range(args.epoch):
+            correct = 0.
             for batch_idx, data in enumerate(loader,1):
                 data, target = data[0].to(args.device), data[1].to(args.device)
                 self.acquire()
                 self.zero_grad()
                 
                 result = self.forward(data)
+                correct += compute_correct.on(result.node)(result, target).get()
                 loss = loss_fn.on(result.node)(result, target)
                 loss.backward()
 
@@ -191,11 +201,47 @@ class ClientControlNode(ControlNode):
                     run_result.sync_flags.append(len(run_result.losses))
                 run_result.losses.append(loss_value)
                 
-                if batch_idx % 5 == 0:
+                if batch_idx % 10 == 0:
                     print('[{}] Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss:{:.6f}'.format(
                         self.rank,
                         epoch, batch_idx * len(data), len(loader.dataset),
                         100. * batch_idx / len(loader),loss_value))
+    
+            run_result.epoch_train_acc.append(100. * correct / len_traindataset)
+
+            if args.epoch_test != 0 and (epoch % args.epoch_test == 0):
+                correct = 0.
+                len_testdataset = len(test_self_loader.dataset)
+                if len_testdataset > 0:
+                    for batch_idx, data in enumerate(test_self_loader):
+                        data, target = data[0].to(args.device), data[1].to(args.device)
+                        result = self.forward(data)
+                        correct += compute_correct.on(result.node)(result, target).get()
+
+                    print('\n[{}] Epoch Self test set: Accuracy: {}/{} ({:.0f}%)'.format(
+                            epoch,
+                            correct, len_testdataset,
+                            100. * correct / len_testdataset))
+
+                    run_result.epoch_test_self_acc.append(100. * correct / len_testdataset)
+
+                correct = 0.
+                test_loss = 0.
+                len_testdataset = len(test_other_loader.dataset)
+                if len_testdataset > 0:
+                    for batch_idx, data in enumerate(test_other_loader):
+                        data, target = data[0].to(args.device), data[1].to(args.device)
+                        result = self.forward(data)
+                        correct += compute_correct.on(result.node)(result, target).get()
+                        test_loss /= len_testdataset
+
+                    print('\n[{}] Other test set: Accuracy: {}/{} ({:.0f}%)'.format(
+                            epoch,
+                            correct, len_testdataset,
+                            100. * correct / len_testdataset))
+
+                    run_result.epoch_test_other_acc.append(100. * correct / len_testdataset)
+
 
         print(f"node {self.rank} done")
         if self.next_node is not None:

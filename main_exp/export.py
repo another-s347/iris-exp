@@ -16,6 +16,7 @@ class RunResult:
         self.client_results: dict[int,'ClientResult'] = {}
         self.eval_results: dict[int,'EvalResult'] = {}
         self.edge_results: 'EdgeResult'
+        self.global_accs: float = 0.
 
     def write(self):
         os.makedirs(f"results/{self.suffix}/", exist_ok=True)
@@ -24,11 +25,17 @@ class RunResult:
             j = {
                 "time": self.datetime,
                 "results": {},
-                "sync_flags": {}
+                "sync_flags": {},
+                "epoch_train_accs": {},
+                "epoch_test_self_accs": {},
+                "epoch_test_other_accs": {}
             }
             for i in self.client_results:
                 j["results"][i] = self.client_results[i].losses
                 j["sync_flags"][i] = self.client_results[i].sync_flags
+                j["epoch_train_accs"][i] = self.client_results[i].epoch_train_acc
+                j["epoch_test_self_accs"][i] = self.client_results[i].epoch_test_self_acc
+                j["epoch_test_other_accs"][i] = self.client_results[i].epoch_test_other_acc
             json.dump(j, f)
             path = os.path.realpath(f.name)
 
@@ -61,6 +68,9 @@ class RunResult:
 class ClientResult:
     def __init__(self) -> None:
         self.losses: List[float] = []
+        self.epoch_train_acc: List[float] = []
+        self.epoch_test_self_acc: List[float] = []
+        self.epoch_test_other_acc: List[float] = []
         self.sync_flags: List[int] = []
         self.rank: int = -1
         self.len_dataset: int = -1
